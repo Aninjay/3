@@ -18,6 +18,12 @@ def create_app(config_class=Config):
     # in deployment with CORS_ORIGINS; wildcard remains convenient for local dev.
     CORS(app, resources={r"/api/*": {"origins": app.config.get("CORS_ORIGINS", "*")}})
 
+    # Vercel's function filesystem is read-only outside /tmp. Matplotlib is
+    # imported by the reporting routes and needs a writable font/config cache.
+    if os.environ.get("VERCEL"):
+        os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+        Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
     # Register blueprints under /api/v1
     from backend.app.routes.health import health_bp
     from backend.app.routes.auth_routes import auth_bp

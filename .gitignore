@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 !.env.compose.example
+.vercel/
 
 # Python
 __pycache__/

@@ -4,7 +4,7 @@
 **Architecture:** Python + Flask + PuLP ILP Optimizer + PostgreSQL/SQLite + React + Vite  
 **Visual System:** Minimal White & Warm Orange (`#E8752E`)
 
-For beginner-friendly Docker, PostgreSQL, backend-hosting, and Netlify deployment steps, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
+For beginner-friendly Docker, PostgreSQL, and Netlify deployment steps, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md). For the two-project Vercel setup (React/Vite frontend plus the existing Flask API), see [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md).
 
 ---
 
