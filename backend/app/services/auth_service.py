@@ -84,6 +84,22 @@ def authenticate_user(login_id: str, password: str):
             user = fetch_one(conn, "SELECT * FROM users WHERE LOWER(login_id) = %s", (identity,))
             if not user and email_matches:
                 user = email_matches[0]
+        if not user and not email_matches:
+            # Personal contact emails are not login emails (accounts sign in
+            # through a shared email or their unique login ID), but a contact
+            # email that belongs to exactly one profile still identifies that
+            # person's account. Shared contact emails stay ambiguous and must
+            # use the unique login ID instead, per API_SPEC.md.
+            profile_user_ids = fetch_all(conn, """
+                SELECT user_id FROM volunteer_profiles
+                WHERE LOWER(email) = %s AND user_id IS NOT NULL
+                UNION
+                SELECT user_id FROM core_committee_profiles
+                WHERE LOWER(email) = %s AND user_id IS NOT NULL
+            """, (identity, identity))
+            distinct_ids = {row["user_id"] for row in profile_user_ids}
+            if len(distinct_ids) == 1:
+                user = fetch_one(conn, "SELECT * FROM users WHERE id = %s", (distinct_ids.pop(),))
         if not user:
             return None, "Invalid login ID or password."
         if user["status"] != "active":
