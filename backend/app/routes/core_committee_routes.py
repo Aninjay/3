@@ -41,7 +41,12 @@ def create_core_committee_member():
     data = request.get_json() or {}
     full_name = str(data.get("full_name") or "").strip()
     email = Config.CORE_COMMITTEE_LOGIN_EMAIL
+    contact_email = str(data.get("email") or "").strip().lower()
     login_id = str(data.get("login_id") or "").strip()
+    if not login_id and contact_email:
+        # Callers that predate the login-ID field identify the member by
+        # their contact email; derive the login ID from its local part.
+        login_id = contact_email.split("@")[0]
     password = data.get("password") or ""
 
     if not full_name or not email or not login_id or not password:
@@ -53,8 +58,7 @@ def create_core_committee_member():
         }), 400
     if (
         len(full_name) > 160
-        or len(email) > 254
-        or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)
+        or (contact_email and (len(contact_email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact_email)))
         or not re.fullmatch(r"[A-Za-z0-9._-]{2,80}", login_id)
     ):
         return jsonify({
@@ -99,7 +103,7 @@ def create_core_committee_member():
         execute_query(conn, """
             INSERT INTO core_committee_profiles (user_id, full_name, email, created_by, created_at, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (user["id"], full_name, email, actor_id, ts, ts))
+        """, (user["id"], full_name, contact_email or email, actor_id, ts, ts))
         execute_query(conn, """
             INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, after_data, created_at)
             VALUES (%s, 'CREATE_CORE_COMMITTEE_MEMBER', 'core_committee_profiles', %s, %s, %s)
@@ -266,6 +270,15 @@ def save_event_department_heads(event_id):
                 "error": {
                     "code": "EVENT_NOT_OPEN_FOR_HEAD_ASSIGNMENTS",
                     "message": "Department heads can be assigned while an event is upcoming or ongoing."
+                }
+            }), 409
+
+        published = fetch_one(conn, "SELECT event_id FROM published_allocations WHERE event_id = %s", (event_id,))
+        if not published:
+            return jsonify({
+                "error": {
+                    "code": "PUBLISHED_ROSTER_REQUIRED",
+                    "message": "Department heads can be assigned only after the event's allocation roster has been published."
                 }
             }), 409
 
