@@ -1,0 +1,13 @@
+Flask>=3.0.0
+Flask-Cors>=4.0.0
+gunicorn>=22.0.0
+openpyxl>=3.1.0
+pulp==2.9.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+pg8000>=1.31.0
+psycopg>=3.1.0; sys_platform != "win32"
+pytest>=8.0.0
+Werkzeug>=3.0.0
+python-dateutil>=2.8.2
+python-dotenv>=1.0.1
