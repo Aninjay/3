@@ -1,0 +1,9 @@
+# Runtime dependencies only; keep development and test tools out of the Vercel bundle.
+Flask>=3.0.0
+Flask-Cors>=4.0.0
+openpyxl>=3.1.0
+pulp==2.9.0
+matplotlib>=3.8.0
+psycopg[binary,pool]>=3.1.0
+pg8000>=1.31.0
+Werkzeug>=3.0.0

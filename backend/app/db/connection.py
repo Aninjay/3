@@ -7,6 +7,7 @@ from backend.app.config import Config
 
 _IS_POSTGRES = False
 _PG_DRIVER = None
+_PG_POOL = None
 
 db_url = Config.DATABASE_URL
 
@@ -14,7 +15,19 @@ if db_url.startswith("postgres://") or db_url.startswith("postgresql://"):
     _IS_POSTGRES = True
     try:
         import psycopg
+        from psycopg_pool import ConnectionPool
         _PG_DRIVER = "psycopg"
+        # A small process-local pool avoids opening a fresh PostgreSQL
+        # connection for every query while keeping serverless instances bounded.
+        _pool_max_size = max(1, int(os.environ.get("PG_POOL_MAX_SIZE", "1")))
+        _pool_timeout = max(1, float(os.environ.get("PG_POOL_TIMEOUT", "10")))
+        _PG_POOL = ConnectionPool(
+            conninfo=Config.DATABASE_URL,
+            min_size=0,
+            max_size=_pool_max_size,
+            timeout=_pool_timeout,
+            kwargs={"autocommit": False},
+        )
     except Exception:
         try:
             import pg8000.dbapi
@@ -26,9 +39,10 @@ def is_postgres():
     return _IS_POSTGRES
 
 class DatabaseWrapper:
-    def __init__(self, raw_conn, is_pg=False):
+    def __init__(self, raw_conn, is_pg=False, pool=None):
         self.raw_conn = raw_conn
         self.is_pg = is_pg
+        self.pool = pool
 
     def cursor(self):
         return self.raw_conn.cursor()
@@ -40,14 +54,16 @@ class DatabaseWrapper:
         self.raw_conn.rollback()
 
     def close(self):
-        self.raw_conn.close()
+        if self.pool is not None:
+            self.pool.putconn(self.raw_conn)
+        else:
+            self.raw_conn.close()
 
 def get_connection():
     if _IS_POSTGRES:
         if _PG_DRIVER == "psycopg":
-            import psycopg
-            conn = psycopg.connect(Config.DATABASE_URL, autocommit=False)
-            return DatabaseWrapper(conn, is_pg=True)
+            conn = _PG_POOL.getconn()
+            return DatabaseWrapper(conn, is_pg=True, pool=_PG_POOL)
         elif _PG_DRIVER == "pg8000":
             import pg8000.dbapi
             # Parse database url: postgresql://user:password@host:port/dbname
