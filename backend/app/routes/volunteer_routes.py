@@ -19,17 +19,18 @@ def create_volunteer():
     name = data.get("full_name", "").strip()
     student_id = data.get("student_id", "").strip().upper()
     email = Config.VOLUNTEER_LOGIN_EMAIL
-    contact_email = str(data.get("contact_email") or "").strip().lower() or email
+    # `email` remains accepted as the original name of the contact-email field.
+    contact_email = str(data.get("contact_email") or data.get("email") or "").strip().lower() or email
     password = data.get("password") or ""
 
-    if not name or not student_id or not email or not password:
+    if not name or not student_id:
         return jsonify({
             "error": {
                 "code": "VALIDATION_ERROR",
-                "message": "Full name, student ID, and password are required."
+                "message": "Full name and student ID are required."
             }
         }), 400
-    if len(password) < 8:
+    if password and len(password) < 8:
         return jsonify({"error": {"code": "VALIDATION_ERROR", "message": "The password must contain at least 8 characters."}}), 400
     if contact_email != email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact_email):
         return jsonify({"error": {"code": "VALIDATION_ERROR", "message": "Enter a valid personal contact email."}}), 400
@@ -58,7 +59,19 @@ def create_volunteer():
                 }
             }), 409
 
-        if password_used_for_email(conn, email, password):
+        # A contact email that is already the login email of an individual
+        # (non-shared) account belongs to that account and cannot be reused.
+        if contact_email not in (Config.VOLUNTEER_LOGIN_EMAIL, Config.CORE_COMMITTEE_LOGIN_EMAIL):
+            existing_email = fetch_one(conn, "SELECT id FROM users WHERE LOWER(email) = %s", (contact_email,))
+            if existing_email:
+                return jsonify({
+                    "error": {
+                        "code": "DUPLICATE_EMAIL",
+                        "message": f"An account with email {contact_email} already exists."
+                    }
+                }), 409
+
+        if password and password_used_for_email(conn, email, password):
             return jsonify({
                 "error": {
                     "code": "DUPLICATE_SHARED_EMAIL_PASSWORD",
@@ -66,11 +79,15 @@ def create_volunteer():
                 }
             }), 409
 
-        # Create an active account with an individual student-ID login.
+        # With a password, create an active account with an individual
+        # student-ID login. Without one, create a pending-activation account
+        # that the volunteer activates through the OTP flow.
+        account_status = 'active' if password else 'pending_activation'
+        password_hash = generate_password_hash(password) if password else None
         execute_query(conn, """
             INSERT INTO users (email, login_id, password_hash, role, status, created_at, updated_at)
-            VALUES (%s, %s, %s, 'volunteer', 'active', %s, %s)
-        """, (email, student_id, generate_password_hash(password), ts, ts))
+            VALUES (%s, %s, %s, 'volunteer', %s, %s, %s)
+        """, (email, student_id, password_hash, account_status, ts, ts))
         user_row = fetch_one(conn, "SELECT id FROM users WHERE LOWER(login_id) = %s", (student_id.lower(),))
 
         # Create volunteer profile
@@ -86,9 +103,14 @@ def create_volunteer():
             VALUES (%s, 'CREATE_VOLUNTEER', 'volunteer_profiles', %s, %s, %s)
         """, (actor_id, vol_row["id"], f"Created volunteer {student_id} ({name})", ts))
 
+    success_message = (
+        "Volunteer account created successfully. Sign in with the student ID and password."
+        if password else
+        "Volunteer created. The account activates when the volunteer completes OTP activation and sets a password."
+    )
     return jsonify({
         "data": vol_row,
-        "meta": {"message": "Volunteer account created successfully. Sign in with the student ID and password."}
+        "meta": {"message": success_message}
     }), 201
 
 @volunteer_bp.route("/volunteers", methods=["GET"])
